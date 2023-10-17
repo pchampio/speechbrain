@@ -1,0 +1,196 @@
+# ################################
+# Model: wav2vec2 + DNN + CTC + LM (k2)
+# Augmentation: SpecAugment
+# Authors: Zeyu Zhao 2023
+#          Georgios Karakasidis 2023
+#          Pierre Champion 2023
+# ################################
+
+# Seed needs to be set at top of yaml, before objects with parameters are made
+seed: 1115
+__set_seed: !apply:torch.manual_seed [!ref <seed>]
+output_folder: !ref results/train_wav2vec2_char_k2/<seed>
+wer_file: !ref <output_folder>/wer.txt
+save_folder: !ref <output_folder>/save
+train_log: !ref <output_folder>/train_log.txt
+
+# URL for the biggest Fairseq english wav2vec2 model.
+wav2vec2_hub: LeBenchmark/wav2vec2-FR-14K-xlarge
+wav2vec2_folder: !ref <save_folder>/wav2vec2_checkpoint
+
+# Data files
+data_folder: !PLACEHOLDER # e.g, /path/to/corpus (**/*.stm)
+stm_directory: !ref <data_folder>/**/[^\.ne_e2\.|\.ne\.|\.spk\.|part\.]*.stm
+wav_directory: !ref <data_folder>/**/*.wav
+# For more training dataset
+# tr_splits: [/ESTER2/train/, /ESTER2/train_trans_rapide/, /ETAPE/train, /EPAC/train]
+# te_splits: {"test_ESTER2":["/ESTER2/test/*"], "test_ESTER1":["/ESTER1/test/*"]}
+tr_splits: [/train/, /train_trans_rapide/]
+dev_splits: [/ESTER2/dev/]
+te_splits: {"test_ESTER2":["/ESTER2/test/*"], "test_ESTER1":["/ESTER1/test/*"]}
+prep_save_folder: !ref <output_folder>
+make_lm: True
+skip_prep: False
+
+ckpt_interval_minutes: 2 # save checkpoint every N min
+train_csv: !ref <output_folder>/train.csv
+valid_csv: !ref <output_folder>/dev.csv
+test_csv:
+   - !ref <output_folder>/test_ESTER2.csv
+
+# For k2 CTC training
+lang_dir: !ref <output_folder>/lang
+vocab_file: !ref <output_folder>/vocab.txt
+sil_prob: 0.
+add_word_boundary: True
+# For k2 decoding
+test_search_beam: 32
+# Beam size (for decoding)
+test_output_beam: 8
+test_max_active_state: 3000
+# Acoustic scale (mutliplied by the log probs)
+ac_scale: 1.5
+use_HLG: True
+# 1best or whole-lattice-rescoring
+# decoding_method: whole-lattice-rescoring
+decoding_method: 1best
+# This is where the 3gram and (optionally) 4gram LM are stored
+# They can be in either ARPA or FST format. If the former, then 
+# the FST equivalent will be created in the same directory by
+# using kaldilm.
+lm_dir: !ref <output_folder>
+# for whole-lattice-rescoring
+lm_scale_list: [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4]
+ngram_order: 4
+
+# Training parameters
+number_of_epochs: 1
+lr: 0.9
+lr_wav2vec: 0.0001
+sorting: ascending # only ascending and descending are supported currently
+auto_mix_prec: False
+sample_rate: 16000
+
+# With data_parallel batch_size is split into N jobs
+# With DDP batch_size is multiplied by N jobs
+batch_size: 6
+num_workers: 12
+grad_accumulation_factor: 2
+nonfinite_patience: 9999999999
+test_batch_size: 5
+
+# In seconds
+avoid_if_longer_than: 90.0
+avoid_if_smaller_than: 0.5
+
+# Dataloader options
+train_dataloader_opts:
+   batch_size: !ref <batch_size>
+   num_workers: !ref <num_workers>
+
+valid_dataloader_opts:
+   batch_size: !ref <batch_size>
+   num_workers: !ref <num_workers>
+
+test_dataloader_opts:
+   batch_size: !ref <test_batch_size>
+   num_workers: !ref <num_workers>
+
+# Model parameters
+activation: !name:torch.nn.LeakyReLU
+dnn_layers: 4
+dnn_neurons: 1280
+freeze_wav2vec: True
+
+# Outputs
+# in k2 check lang/tokens.txt
+# BPE size, index(blank/eos/bos) = 0
+output_neurons: 500
+
+tokenizer: !new:sentencepiece.SentencePieceProcessor
+# Tokenizer model
+tokenizer_file: ../../Tokenizer/results/500_subword_unigram_LM/500_unigram.model
+
+pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
+    collect_in: !ref <save_folder>
+    loadables:
+        tokenizer: !ref <tokenizer>
+    paths:
+        tokenizer: !ref <tokenizer_file>
+#
+# Functions and classes
+#
+epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
+   limit: !ref <number_of_epochs>
+
+augmentation: !new:speechbrain.lobes.augment.TimeDomainSpecAugment
+   sample_rate: !ref <sample_rate>
+   speeds: [95, 100, 105]
+
+enc: !new:speechbrain.lobes.models.VanillaNN.VanillaNN
+   input_shape: [null, null, 1280]
+   activation: !ref <activation>
+   dnn_blocks: !ref <dnn_layers>
+   dnn_neurons: !ref <dnn_neurons>
+
+wav2vec2: !new:speechbrain.lobes.models.huggingface_wav2vec.HuggingFaceWav2Vec2
+   source: !ref <wav2vec2_hub>
+   output_norm: True
+   freeze: !ref <freeze_wav2vec>
+   save_path: !ref <wav2vec2_folder>
+
+ctc_lin: !new:speechbrain.nnet.linear.Linear
+   input_size: !ref <dnn_neurons>
+   n_neurons: !ref <output_neurons>
+
+log_softmax: !new:speechbrain.nnet.activations.Softmax
+   apply_log: True
+
+ctc_cost: !name:speechbrain.k2_integration.losses.ctc_k2
+   reduction: mean
+   beam_size: 10
+
+modules:
+   wav2vec2: !ref <wav2vec2>
+   enc: !ref <enc>
+   ctc_lin: !ref <ctc_lin>
+
+model: !new:torch.nn.ModuleList
+   - [!ref <enc>, !ref <ctc_lin>]
+
+model_opt_class: !name:torch.optim.Adadelta
+   lr: !ref <lr>
+   rho: 0.95
+   eps: 1.e-8
+
+wav2vec_opt_class: !name:torch.optim.Adam
+   lr: !ref <lr_wav2vec>
+
+lr_annealing_model: !new:speechbrain.nnet.schedulers.NewBobScheduler
+   initial_value: !ref <lr>
+   improvement_threshold: 0.0025
+   annealing_factor: 0.8
+   patient: 0
+
+lr_annealing_wav2vec: !new:speechbrain.nnet.schedulers.NewBobScheduler
+   initial_value: !ref <lr_wav2vec>
+   improvement_threshold: 0.0025
+   annealing_factor: 0.9
+   patient: 0
+
+checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
+   checkpoints_dir: !ref <save_folder>
+   recoverables:
+      wav2vec2: !ref <wav2vec2>
+      model: !ref <model>
+      scheduler_model: !ref <lr_annealing_model>
+      scheduler_wav2vec: !ref <lr_annealing_wav2vec>
+      counter: !ref <epoch_counter>
+
+train_logger: !new:speechbrain.utils.train_logger.FileTrainLogger
+   save_file: !ref <train_log>
+
+error_rate_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
+
+cer_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
+   split_tokens: True

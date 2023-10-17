@@ -22,6 +22,7 @@ from pathlib import Path
 from speechbrain.k2_integration.prepare_lang import prepare_lang
 from speechbrain.k2_integration.graph_compiler import CtcTrainingGraphCompiler
 from speechbrain.k2_integration.lexicon import Lexicon, get_lexicon
+from speechbrain import lm
 
 logger = logging.getLogger(__name__)
 
@@ -471,7 +472,7 @@ def arpa_to_fst(
 
     _arpa_to_fst_single(arpa_dir / "3gram.arpa", output_dir / "G_3_gram.fst.txt", max_order=3)
     if convert_higher_gram:
-        _arpa_to_fst_single(arpa_dir / f"{hparams.ngram_order}gram.arpa", output_dir / f"G_{hparams.ngram_order}_gram.fst.txt", max_order={hparams.ngram_order})
+        _arpa_to_fst_single(arpa_dir / f"{hparams['ngram_order']}gram.arpa", output_dir / f"G_{hparams['ngram_order']}_gram.fst.txt", max_order=hparams['ngram_order'])
 
 if __name__ == "__main__":
 
@@ -498,6 +499,12 @@ if __name__ == "__main__":
         overrides=overrides,
     )
 
+    if "tokenizer" in hparams:
+        # We download the tokenizer from HuggingFace (or elsewhere depending on
+        # the path given in the YAML file).
+        run_on_main(hparams["pretrainer"].collect_files)
+        hparams["pretrainer"].load_collected(device=run_opts["device"])
+
     # Dataset prep (using glob pattern matching from data_folder)
     from stm_prepare import prepare_stm  # noqa
 
@@ -511,11 +518,21 @@ if __name__ == "__main__":
             "dev_splits": hparams["dev_splits"],
             "te_splits": hparams["te_splits"],
             "save_folder": hparams["prep_save_folder"],
-            "make_lm": hparams["make_lm"],
             "skip_prep": hparams["skip_prep"],
-            "lm_gram_orders": [3, hparams["ngram_orders"]],
         },
     )
+
+    if hparams["make_lm"]:
+        transcript_words = os.path.join(hparams["prep_save_folder"], "transcript_words.txt")
+        for n in [3, hparams["ngram_order"]]:
+            out_arpa = os.path.join(hparams["prep_save_folder"], f"{n}gram.arpa")
+            if Path(out_arpa).exists() and os.path.getmtime(transcript_words) < os.path.getmtime(out_arpa):
+                logger.info(f"Skiping creation of  {n}-gram")
+                continue
+            lm.arpa.Make(transcript_words,
+                         hparams["prep_save_folder"],
+                         ngram_order=n)
+
 
     # here we create the datasets objects as well as tokenization and encoding
     train_data, valid_data, test_datasets = dataio_prepare(hparams)
@@ -578,7 +595,7 @@ if __name__ == "__main__":
         lexicon=lexicon,
         device=asr_brain.device,
         G_path=G_path,
-        rescoring_lm_path=Path(asr_brain.hparams.lm_dir) / f"G_{hparams.ngram_order}_gram.fst.txt" if need_higher_gram else None,
+        rescoring_lm_path=Path(asr_brain.hparams.lm_dir) / f"G_{hparams['ngram_order']}_gram.fst.txt" if need_higher_gram else None,
     )
 
     # Add attributes to asr_brain

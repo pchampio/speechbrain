@@ -3,6 +3,7 @@
 # Augmentation: SpecAugment
 # Authors: Zeyu Zhao 2023
 #          Georgios Karakasidis 2023
+#          Pierre Champion 2023
 # ################################
 
 # Seed needs to be set at top of yaml, before objects with parameters are made
@@ -18,7 +19,7 @@ wav2vec2_hub: LeBenchmark/wav2vec2-FR-14K-xlarge
 wav2vec2_folder: !ref <save_folder>/wav2vec2_checkpoint
 
 # Data files
-data_folder: /corpus
+data_folder: !PLACEHOLDER # e.g, /path/to/corpus (**/*.stm)
 stm_directory: !ref <data_folder>/**/[^\.ne_e2\.|\.ne\.|\.spk\.|part\.]*.stm
 wav_directory: !ref <data_folder>/**/*.wav
 # For more training dataset
@@ -37,6 +38,31 @@ valid_csv: !ref <output_folder>/dev.csv
 test_csv:
    - !ref <output_folder>/test_ESTER2.csv
 
+# For k2 CTC training
+lang_dir: !ref <output_folder>/lang
+vocab_file: !ref <output_folder>/vocab.txt
+sil_prob: 0.
+add_word_boundary: True
+# For k2 decoding
+test_search_beam: 32
+# Beam size (for decoding)
+test_output_beam: 8
+test_max_active_state: 3000
+# Acoustic scale (mutliplied by the log probs)
+ac_scale: 1.5
+use_HLG: True
+# 1best or whole-lattice-rescoring
+decoding_method: whole-lattice-rescoring
+# decoding_method: 1best
+# This is where the 3gram and (optionally) 4gram LM are stored
+# They can be in either ARPA or FST format. If the former, then 
+# the FST equivalent will be created in the same directory by
+# using kaldilm.
+lm_dir: !ref <output_folder>
+# for whole-lattice-rescoring
+lm_scale_list: [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4]
+ngram_order: 5
+
 # Training parameters
 number_of_epochs: 1
 lr: 0.9
@@ -51,7 +77,7 @@ batch_size: 6
 num_workers: 12
 grad_accumulation_factor: 2
 nonfinite_patience: 9999999999
-test_batch_size: 1
+test_batch_size: 5
 
 # In seconds
 avoid_if_longer_than: 90.0
@@ -160,28 +186,3 @@ error_rate_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
 
 cer_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
    split_tokens: True
-
-# For k2 CTC training
-lang_dir: !ref <output_folder>/lang
-vocab_file: !ref <output_folder>/vocab.txt
-sil_prob: 0.
-add_word_boundary: True
-# For k2 decoding
-test_search_beam: 32
-# Beam size (for decoding)
-test_output_beam: 8
-test_max_active_state: 3000
-# Acoustic scale (mutliplied by the log probs)
-ac_scale: 1.5
-use_HLG: True
-# 1best or whole-lattice-rescoring
-# decoding_method: whole-lattice-rescoring
-decoding_method: 1best
-# This is where the 3gram and (optionally) 4gram LM are stored
-# They can be in either ARPA or FST format. If the former, then 
-# the FST equivalent will be created in the same directory by
-# using kaldilm.
-lm_dir: !ref <output_folder>
-# for whole-lattice-rescoring
-lm_scale_list: [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4]
-ngram_orders: 5
