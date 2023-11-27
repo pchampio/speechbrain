@@ -6,7 +6,7 @@
 # ################################
 
 # Seed needs to be set at top of yaml, before objects with parameters are made
-seed: 1114
+seed: 1115
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 output_folder: !ref results/train_wav2vec2_char_k2/<seed>
 wer_file: !ref <output_folder>/wer.txt
@@ -21,12 +21,12 @@ wav2vec2_folder: !ref <save_folder>/wav2vec2_checkpoint
 data_folder: /corpus
 stm_directory: !ref <data_folder>/**/[^\.ne_e2\.|\.ne\.|\.spk\.|part\.]*.stm
 wav_directory: !ref <data_folder>/**/*.wav
-# tr_splits: [/train/, /train_trans_rapide/]
-# dev_splits: [/dev/]
-# te_splits: [/ESTER2/test/]
-tr_splits: [/ESTER2/train/, /ESTER2/train_trans_rapide/, /ETAPE/train, /EPAC/train]
+# For more training dataset
+# tr_splits: [/ESTER2/train/, /ESTER2/train_trans_rapide/, /ETAPE/train, /EPAC/train]
+# te_splits: {"test_ESTER2":["/ESTER2/test/*"], "test_ESTER1":["/ESTER1/test/*"]}
+tr_splits: [/train/, /train_trans_rapide/]
 dev_splits: [/ESTER2/dev/]
-te_splits: {"test_ETAPE":["/ETAPE/test/*"], "test_ESTER2":["/ESTER2/test/*"], "test_ESTER1":["/ESTER1/test/*"]}
+te_splits: {"test_ESTER2":["/ESTER2/test/*"], "test_ESTER1":["/ESTER1/test/*"]}
 prep_save_folder: !ref <output_folder>
 make_lm: True
 skip_prep: False
@@ -36,7 +36,6 @@ train_csv: !ref <output_folder>/train.csv
 valid_csv: !ref <output_folder>/dev.csv
 test_csv:
    - !ref <output_folder>/test_ESTER2.csv
-   - !ref <output_folder>/test_ETAPE.csv
 
 # Training parameters
 number_of_epochs: 1
@@ -79,11 +78,10 @@ freeze_wav2vec: True
 
 # Outputs
 # in k2 check lang/tokens.txt
-output_neurons: 49  # BPE size, index(blank/eos/bos) = 0
-
-# Decoding parameters
-use_language_modelling: False
-# ngram_lm_path: !PLACEHOLDER
+# BPE size, index(blank/eos/bos) = 0
+output_neurons: !apply:speechbrain.lobes.utils.NumberOfLines
+   file: !ref <lang_dir>/tokens.txt
+   default: 51
 
 #
 # Functions and classes
@@ -106,18 +104,6 @@ wav2vec2: !new:speechbrain.lobes.models.huggingface_wav2vec.HuggingFaceWav2Vec2
    output_norm: True
    freeze: !ref <freeze_wav2vec>
    save_path: !ref <wav2vec2_folder>
-
-#####
-# Uncomment this block if you prefer to use a Fairseq pretrained model instead
-# of a HuggingFace one. Here, we provide an URL that is obtained from the
-# Fairseq github for the multilingual XLSR.
-#
-#wav2vec2_url: https://dl.fbaipublicfiles.com/fairseq/wav2vec/wav2vec_vox_960h_pl.pt
-#wav2vec2: !new:speechbrain.lobes.models.fairseq_wav2vec.FairseqWav2Vec2
-#    pretrained_path: !ref <wav2vec2_url>
-#    output_norm: True
-#    freeze: False
-#    save_path: !ref <save_folder>/wav2vec2_checkpoint/model.pt
 
 ctc_lin: !new:speechbrain.nnet.linear.Linear
    input_size: !ref <dnn_neurons>
@@ -189,10 +175,13 @@ test_max_active_state: 3000
 ac_scale: 1.5
 use_HLG: True
 # 1best or whole-lattice-rescoring
-decoding_method: whole-lattice-rescoring
+# decoding_method: whole-lattice-rescoring
+decoding_method: 1best
 # This is where the 3gram and (optionally) 4gram LM are stored
 # They can be in either ARPA or FST format. If the former, then 
 # the FST equivalent will be created in the same directory by
 # using kaldilm.
 lm_dir: !ref <output_folder>
+# for whole-lattice-rescoring
 lm_scale_list: [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4]
+ngram_orders: 5

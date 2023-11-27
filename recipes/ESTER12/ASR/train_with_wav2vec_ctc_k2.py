@@ -388,15 +388,15 @@ def arpa_to_fst(
         output_dir: Path,
         words_txt: Path,
         disambig_symbol: str = "#0",
-        convert_4gram: bool = True
+        convert_higher_gram: bool = True
     ):
     """ Use kaldilm to convert an ARPA LM to FST. For example, in librispeech
-    you can find a 3-gram (pruned) and a 4-gram ARPA LM in the openslr
+    you can find a 3-gram (pruned) and a {4,5}-gram ARPA LM in the openslr
     website (https://www.openslr.org/11/). You can use this function to
     convert them to FSTs. The resulting FSTs can then be used to create a
     decoding graph (HLG) for k2 decoding.
 
-    If `convert_4gram` is True, then we will convert the 4-gram ARPA LM to
+    If `convert_higher_gram` is True, then we will convert the {4,5}-gram ARPA LM to
     FST. Otherwise, we will only convert the 3-gram ARPA LM to FST.
     It is worth noting that if the fsts already exist in the output_dir,
     then we will not convert them again (so you may need to delete them
@@ -405,22 +405,20 @@ def arpa_to_fst(
     Arguments
     ---------
         arpa_dir: str
-            Path to the directory containing the ARPA LM (we expect a file named
-            3-gram.pruned.1e-7.arpa to exist, and if `convert_4gram` is True,
-            then "4-gram.arpa" should also exist).
+            Path to the directory containing the ARPA LM.
         output_dir: str
             Path to the directory where the FSTs will be saved.
         words_txt: str
             Path to the words.txt file created by prepare_lang.
         disambig_symbol: str
             The disambiguation symbol to use.
-        convert_4gram: bool
-            If True, then we will convert the 4-gram ARPA LM to
+        convert_higher_gram: bool
+            If True, then we will convert the {4,5}-gram ARPA LM to
             FST. Otherwise, we will only convert the 3-gram ARPA LM to FST.
         trigram_name: str
             The name of the 3-gram ARPA LM file.
         fourgram_name: str
-            The name of the 4-gram ARPA LM file.
+            The name of the {4,5}-gram ARPA LM file.
     
     Raises
     ---------
@@ -472,8 +470,8 @@ def arpa_to_fst(
             f.write(s)
 
     _arpa_to_fst_single(arpa_dir / "3gram.arpa", output_dir / "G_3_gram.fst.txt", max_order=3)
-    if convert_4gram:
-        _arpa_to_fst_single(arpa_dir / "4gram.arpa", output_dir / "G_4_gram.fst.txt", max_order=4)
+    if convert_higher_gram:
+        _arpa_to_fst_single(arpa_dir / f"{hparams.ngram_order}gram.arpa", output_dir / f"G_{hparams.ngram_order}_gram.fst.txt", max_order={hparams.ngram_order})
 
 if __name__ == "__main__":
 
@@ -515,6 +513,7 @@ if __name__ == "__main__":
             "save_folder": hparams["prep_save_folder"],
             "make_lm": hparams["make_lm"],
             "skip_prep": hparams["skip_prep"],
+            "lm_gram_orders": [3, hparams["ngram_orders"]],
         },
     )
 
@@ -542,7 +541,6 @@ if __name__ == "__main__":
             },
         )
 
-
     lexicon = Lexicon(hparams["lang_dir"])
 
     # Trainer initialization
@@ -553,18 +551,18 @@ if __name__ == "__main__":
         checkpointer=hparams["checkpointer"],
     )
 
-    if hparams.use_HLG:
+    if asr_brain.hparams.use_HLG:
         G_path = Path(asr_brain.hparams.lm_dir) / "G_3_gram.fst.txt"
         logger.info(f"Will load LM from {G_path}")
     else:
         G_path = None
 
-    need_4gram = (asr_brain.hparams.decoding_method == "whole-lattice-rescoring")
+    need_higher_gram = (asr_brain.hparams.decoding_method == "whole-lattice-rescoring")
     # NOTE: This means that even if the 3gram G is not needed, but we still plan to rescore,
     #       then G_3_gram.fst.txt will still be created (i.e. if HLG is False but the decoding
     #       method is whole-lattice-rescoring, then G_3_gram.fst.txt will still be created).
-    if hparams.use_HLG or need_4gram:
-        # Create the G_3_gram.fst.txt for k2 decoding and G_4_gram.fst.txt for k2 rescoring
+    if asr_brain.hparams.use_HLG or need_higher_gram:
+        # Create the G_3_gram.fst.txt for k2 decoding and G_{4,5}_gram.fst.txt for k2 rescoring
         logger.info("Converting arpa LM to FST")
         run_on_main(
             arpa_to_fst,
@@ -572,7 +570,7 @@ if __name__ == "__main__":
                 "arpa_dir": Path(asr_brain.hparams.lm_dir),
                 "output_dir": Path(asr_brain.hparams.lm_dir),
                 "words_txt": Path(asr_brain.hparams.lang_dir) / "words.txt",
-                "convert_4gram": need_4gram,
+                "convert_higher_gram": need_higher_gram,
             },
         )
         assert G_path.is_file(), f"{G_path} does not exist"
@@ -580,7 +578,7 @@ if __name__ == "__main__":
         lexicon=lexicon,
         device=asr_brain.device,
         G_path=G_path,
-        rescoring_lm_path=Path(asr_brain.hparams.lm_dir) / "G_4_gram.fst.txt" if need_4gram else None,
+        rescoring_lm_path=Path(asr_brain.hparams.lm_dir) / f"G_{hparams.ngram_order}_gram.fst.txt" if need_higher_gram else None,
     )
 
     # Add attributes to asr_brain

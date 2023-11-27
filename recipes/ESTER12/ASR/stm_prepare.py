@@ -71,6 +71,7 @@ def prepare_stm(
         te_splits,
         save_folder,
         make_lm=False,
+        lm_gram_orders=[3, 4],
         skip_prep=False,
         ):
     """
@@ -92,7 +93,9 @@ def prepare_stm(
     save_folder : str
         The directory where to store the csv files.
     make_lm: bool
-        If True, create arpa {2-5}grams LMs
+        If True, create arpa {3-4}grams LMs
+    lm_gram_orders: list
+        List of N grams order, defualt=[3,4]
     skip_prep: bool
         If True, data preparation is skipped.
 
@@ -255,7 +258,7 @@ def prepare_stm(
             file.write(line + "\n")
 
     if make_lm:
-        for n in [3, 4]:
+        for n in lm_gram_orders:
             lm.arpa.Make(transcript_words, save_folder, ngram_order=n)
 
     # saving options
@@ -446,14 +449,3 @@ def skip(save_folder, conf):
             skip = False
 
     return skip
-
-if __name__ == "__main__":
-    prepare_stm(
-        "/data/pchampio/**/[^\.ne_e2\.|\.ne\.|\.spk\.|part\.]*.stm",
-        "/data/pchampio/**/*.wav",
-        [r"/train/", r"/train_trans_rapide/"],
-        [r"/dev/"],
-        {"test_ETAPE":["/ETAPE/test/*"], "test_ESTER2":["/ESTER2/test/*"], "test_ESTER1":["/ESTER1/test/*"]},
-        "./test_dpr",
-        make_lm=True,
-    )
