@@ -42,7 +42,7 @@ test_csv:
 number_of_epochs: 1
 lr: 0.9
 lr_wav2vec: 0.0001
-sorting: ascending
+sorting: ascending # only ascending and descending are supported currently
 auto_mix_prec: False
 sample_rate: 16000
 
@@ -79,7 +79,7 @@ freeze_wav2vec: True
 
 # Outputs
 # in k2 check lang/tokens.txt
-output_neurons: 45  # BPE size, index(blank/eos/bos) = 0
+output_neurons: 49  # BPE size, index(blank/eos/bos) = 0
 
 # Decoding parameters
 use_language_modelling: False

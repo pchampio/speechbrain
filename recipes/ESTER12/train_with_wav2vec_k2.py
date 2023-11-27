@@ -529,6 +529,7 @@ if __name__ == "__main__":
                 "csv_files": [hparams["output_folder"] + "/train.csv"],
                 "extra_vocab_files": [hparams["vocab_file"]],
                 "add_word_boundary": hparams["add_word_boundary"],
+                "csv_text_key": "text",
             },
         )
 
@@ -552,11 +553,9 @@ if __name__ == "__main__":
         checkpointer=hparams["checkpointer"],
     )
 
-    need_G = False
-    if getattr(asr_brain.hparams, "use_HLG", False) in [True, "True"]:
+    if hparams.use_HLG:
         G_path = Path(asr_brain.hparams.lm_dir) / "G_3_gram.fst.txt"
         logger.info(f"Will load LM from {G_path}")
-        need_G = True
     else:
         G_path = None
 
@@ -564,7 +563,7 @@ if __name__ == "__main__":
     # NOTE: This means that even if the 3gram G is not needed, but we still plan to rescore,
     #       then G_3_gram.fst.txt will still be created (i.e. if HLG is False but the decoding
     #       method is whole-lattice-rescoring, then G_3_gram.fst.txt will still be created).
-    if need_G or need_4gram:
+    if hparams.use_HLG or need_4gram:
         # Create the G_3_gram.fst.txt for k2 decoding and G_4_gram.fst.txt for k2 rescoring
         logger.info("Converting arpa LM to FST")
         run_on_main(
