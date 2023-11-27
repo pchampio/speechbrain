@@ -8,7 +8,7 @@ import os
 import warnings
 
 def NumberOfLines(file, default, offset=-1):
-    """Reads the number of line of a file or use defualt.
+    """Reads the number of line of a file or use default.
     Handy safeguard to make sure a default value equal file.readlines
     value which can be obtained after dataprep
 
@@ -16,7 +16,7 @@ def NumberOfLines(file, default, offset=-1):
     ---------
     file : file
         File to read from
-    defualt : int
+    default : int
         Default value when file not found (before dataprep)
     offset : int
         Value to add to the number of line.
@@ -28,7 +28,7 @@ def NumberOfLines(file, default, offset=-1):
 
     Raises
     ---------
-        UserWarning: If file not found or if defualt differ from actual number of line
+        UserWarning: If file not found or if default differ from actual number of line
 
     Example in yaml
     ---------------
